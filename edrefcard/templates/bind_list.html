@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}EDRefCard: public configurations{% endblock %}
+
+{% block body %}
+<div id="list">
+    <h1>EDRefCard: public configurations</h1>
+</div>
+<div>
+    <form action="" id="searchForm">
+        <table>
+            <tr>
+                <td><label for="deviceFilter">Select Controller(s)</label></td>
+                <td>
+                    <select name="deviceFilter" id="deviceFilter" multiple size=10>
+                    {% for device in devices|sort %}
+                        <option value="{{ device }}"
+                                {% if device in request.args.getlist('deviceList') %}{{ selected }}{% endif %}
+                        >
+                            {{ device }}
+                        </option>
+                    {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td colspan=2><input type="submit" value="Search"></td>
+            </tr>
+        </table>
+    </form>
+</div>
+<table>
+    <tr>
+        <th align="left" class="description">Description</th>
+        <th align="left" class="controllers">Controllers</th>
+        <th align="left" class="date">Date</th>
+    </tr>
+
+{% for obj in objs %} {# Config.allConfigs(sortKey=lambda obj: str(obj['description']).casefold()) #}
+    {% if obj['description'] %}
+    <tr>
+        <td class="description">
+            <a href="{{ obj.refcardURL() }}">{{ obj['description'] }}</a>
+        </td>
+        <td class="controllers">{{ controllersStr }}</td>
+        <td class="date">{{ obj['timestamp'].ctime() }}</td>
+    </tr>
+    {# except Exception as e:
+        <tr>
+            <td>ERROR in item {{ obj["runID"] }}</td>
+            <td>{{ e }}</td>
+        </tr>
+    #}
+    {% endif %}
+{% endfor %}
+</table>
+{% endblock %}

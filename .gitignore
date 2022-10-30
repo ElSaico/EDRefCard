@@ -1,6 +1,7 @@
 ignored
 *.pyc
-www/configs
+.idea
+edrefcard/configs
 .cache
 .coverage
 htmlcov

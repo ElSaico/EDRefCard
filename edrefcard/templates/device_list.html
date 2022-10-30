@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}EDRefCard: supported devices{% endblock %}
+
+{% block body %}
+<div id="list">
+    <h1>EDRefCard: supported devices</h1>
+</div>
+<ul>
+{% for device in devices|sort %}
+    <li>
+        <a href="/device/{{ device }}">{{ device }}</a>
+        <a href="/list?deviceFilter={{ device }}" title="search">&#128269;</a>
+    </li>
+{% endfor %}
+</ul>
+{% endblock %}

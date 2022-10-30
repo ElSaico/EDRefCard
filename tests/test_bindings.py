@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 
-from unittest import TestCase, mock, main as testmain
-from unittest.mock import MagicMock
+from unittest import TestCase, main as testmain
 import os
 import string
 from collections import OrderedDict
 from pathlib import Path
 import contextlib
-from www.scripts import bindings
+import bindings
 
 
 class ConfigTests(TestCase):
@@ -22,7 +21,7 @@ class ConfigTests(TestCase):
             config = bindings.Config('')
     
     def testRandomNameIsValid(self):
-        config = bindings.Config.newRandom()
+        config = bindings.Config.new_random()
         name = config.name
         self.assertEqual(len(name), 6)
         for char in name:

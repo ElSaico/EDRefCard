@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "EDRefCard"
+version = "0.1.0"
+description = ""
+authors = ["Bruno Marques <bruno@bmarques.net>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+Flask = "^2.2.2"
+Wand = "^0.6.10"
+lxml = "^4.9.1"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+pytest-cov = "^4.0.0"
+coveralls = "^3.3.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

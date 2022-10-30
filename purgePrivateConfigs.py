@@ -13,7 +13,7 @@ from pathlib import Path
 class Purger:
 
     def __init__(self):
-        self.configsDir = Path('./www/configs')
+        self.configsDir = Path('./edrefcard/configs')
     
     def allBindings(self):
         return list(self.configsDir.glob('**/*.binds'))

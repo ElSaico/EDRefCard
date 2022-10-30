@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-__version__ = '1.3'
-
 from lxml import etree
 
 from collections import OrderedDict
@@ -11,10 +9,6 @@ from wand.image import Image
 from wand.font import Font
 from wand.color import Color
 
-import cgi
-import cgitb
-import html
-import sys
 import string
 import random
 import datetime
@@ -22,78 +16,76 @@ import codecs
 import os
 import pickle
 import re
-from enum import Enum
 from pathlib import Path
 from urllib.parse import urljoin
 
-try:
-    from .bindingsData import *
-except: # pragma: no cover
-    from bindingsData import *
+from .data import SUPPORTED_DEVICES, HOTAS_DETAILS, KEYMAP
 
 
 class Config:
+    @staticmethod
     def dirRoot():
-        return Path(os.environ.get('CONTEXT_DOCUMENT_ROOT', '..')).resolve()
-        
+        return Path(os.environ.get('CONTEXT_DOCUMENT_ROOT', '../www')).resolve()
+
+    @staticmethod
     def webRoot():
         return urljoin(os.environ.get('SCRIPT_URI', 'https://edrefcard.info/'), '/')
-    
-    def newRandom():
+
+    @staticmethod
+    def new_random():
         config = Config(Config.randomName())
-        while(config.exists()):
+        while config.exists():
             config = Config(Config.randomName())
         return config
-    
+
     def __init__(self, name):
         if not name:
             raise ValueError('Config must have a name')
         self.name = name
-    
+
     def __repr__(self):
-        return "Config('%s')" % self.name
-    
+        return f"Config('{self.name}')"
+
+    @staticmethod
     def randomName():
-        name = ''.join(random.choice(string.ascii_lowercase) for x in range(6))
-        return name
-    
+        return ''.join(random.choice(string.ascii_lowercase) for x in range(6))
+
+    @staticmethod
     def configsPath():
         return Config.dirRoot() / 'configs'
-        
+
     def path(self):
         path = Config.configsPath() / self.name[:2] / self.name
         return path
-    
+
     def pathWithNameAndSuffix(self, name, suffix):
         newName = '-'.join([self.name, name])
         p = self.path().with_name(newName)
         return p.with_suffix(suffix)
-    
+
     def pathWithSuffix(self, suffix):
         return self.path().with_suffix(suffix)
-        
+
     def exists(self):
         return self.path().exists()
-        
-    def makeDir(self):
-        fullPath = self.path()
-        dirPath = fullPath.parent
-        dirPath.mkdir(parents=True, exist_ok=True)
-        
-    def refcardURL(self):
-        url = urljoin(Config.webRoot(), "binds/%s" % self.name)
-        return url
-        
-    def bindsURL(self):
-        url = urljoin(Config.webRoot(), "configs/%s.binds" % self.name)
-        return url
 
+    def makeDir(self):
+        self.path().parent.mkdir(parents=True, exist_ok=True)
+
+    def refcardURL(self):
+        return urljoin(Config.webRoot(), f"binds/{self.name}")
+
+    def bindsURL(self):
+        return urljoin(Config.webRoot(), f"configs/{self.name}.binds")
+
+    @staticmethod
     def unpickle(path):
         with path.open('rb') as file:
             object = pickle.load(file)
             object['runID'] = path.stem
         return object
-            
+
+    @staticmethod
     def allConfigs(sortKey=None):
         configsPath = Config.configsPath()
         picklePaths = list(configsPath.glob('**/*.replay'))
@@ -102,33 +94,24 @@ class Config:
             objs.sort(key=sortKey)
         return objs
 
-	
-class Mode(Enum):
-    invalid = 0
-    blocks = 1
-    list = 2
-    replay = 3
-    generate = 4
-    listDevices = 5
-
 
 class Errors:
-    
     def __init__(
             self,
-            unhandledDevicesWarnings = '',
-            deviceWarnings = '',
-            misconfigurationWarnings = '',
-            errors = ''
-        ):
+            unhandledDevicesWarnings='',
+            deviceWarnings='',
+            misconfigurationWarnings='',
+            errors=''
+    ):
         self.unhandledDevicesWarnings = unhandledDevicesWarnings
         self.deviceWarnings = deviceWarnings
         self.misconfigurationWarnings = misconfigurationWarnings
         self.errors = errors
-    
+
     def __repr__(self):
-        return ("Errors(unhandledDevicesWarnings='%s', deviceWarnings='%s', misconfigurationWarnings='%s', errors='%s')" 
-            % (self.unhandledDevicesWarnings, self.deviceWarnings, self.misconfigurationWarnings, self.errors))
+        return (
+            f"Errors(unhandledDevicesWarnings='{self.unhandledDevicesWarnings}', deviceWarnings='{self.deviceWarnings}', misconfigurationWarnings='{self.misconfigurationWarnings}', errors='{self.errors}')")
+
 
 # Utility section
 
@@ -138,7 +121,8 @@ def getFontPath(weight, style):
         style = ''
     if weight == 'Regular' and style != '':
         weight = ''
-    return '../fonts/Exo2.0-%s%s.otf' % (weight, style)
+    return f'../fonts/Exo2.0-{weight}{style}.otf'
+
 
 # Command group styling
 groupStyles = {
@@ -167,6 +151,7 @@ categoryStyles = {
     'UI': {'Color': Color('DarkOrange'), 'Font': getFontPath('Regular', 'Normal')},
 }
 
+
 # Modifier styling - note a list not a dictionary as modifiers are numeric
 class ModifierStyles:
     styles = [
@@ -187,9 +172,9 @@ class ModifierStyles:
     ]
 
     def index(num):
-        i= num % len(ModifierStyles.styles)
+        i = num % len(ModifierStyles.styles)
         return ModifierStyles.styles[i]
-    
+
 
 def transKey(key):
     if key is None:
@@ -198,6 +183,7 @@ def transKey(key):
     if trans is None:
         trans = key.replace('Key_', '')
     return trans
+
 
 # Output section
 
@@ -208,6 +194,7 @@ def writeUrlToDrawing(config, drawing, public):
     drawing.font_size = 72
     drawing.text(x=23, y=252, body=url)
     drawing.pop()
+
 
 # Create a keyboard image from the template plus bindings
 def createKeyboardImage(physicalKeys, modifiers, source, imageDevices, biggestFontSize, displayGroups, runId, public):
@@ -246,33 +233,27 @@ def createKeyboardImage(physicalKeys, modifiers, source, imageDevices, biggestFo
 
                 for modifier, bind in physicalKey.get('Binds').items():
                     for controlKey, control in bind.get('Controls').items():
-                        bind = {}
-                        bind['Control'] = control
-                        bind['Key'] = itemKey
-                        bind['Modifiers'] = []
+                        bind = {'Control': control, 'Key': itemKey, 'Modifiers': []}
 
                         if modifier != 'Unmodified':
                             for modifierKey, modifierControls in modifiers.items():
                                 for modifierControl in modifierControls:
-                                    if modifierControl.get('ModifierKey') == modifier and modifierControl.get('Key') is not None:
+                                    if modifierControl.get('ModifierKey') == modifier and modifierControl.get(
+                                            'Key') is not None:
                                         bind['Modifiers'].append(modifierControl.get('Key'))
 
                         outputs[control['Group']][control['Name']] = bind
 
             # Set up a screen state to handle output
-            screenState = {}
-            screenState['baseX'] = 60
-            screenState['baseY'] = 320
-            screenState['maxWidth'] = 0
-            screenState['thisWidth'] = 0
+            screenState = {'baseX': 60, 'baseY': 320, 'maxWidth': 0, 'thisWidth': 0}
             screenState['currentX'] = screenState['baseX']
             screenState['currentY'] = screenState['baseY']
 
             font = Font(getFontPath('Regular', 'Normal'), antialias=True, size=biggestFontSize)
-            groupTitleFont = Font(getFontPath('Regular', 'Normal'), antialias=True, size=biggestFontSize*2)
-            context.stroke_width=2
-            context.stroke_color=Color('Black')
-            context.fill_opacity=0
+            groupTitleFont = Font(getFontPath('Regular', 'Normal'), antialias=True, size=biggestFontSize * 2)
+            context.stroke_width = 2
+            context.stroke_color = Color('Black')
+            context.fill_opacity = 0
 
             # Go through once for each display group
             for displayGroup in displayGroups:
@@ -281,7 +262,8 @@ def createKeyboardImage(physicalKeys, modifiers, source, imageDevices, biggestFo
 
                 writeText(context, sourceImg, displayGroup, screenState, groupTitleFont, False, True)
 
-                orderedOutputs = OrderedDict(sorted(outputs[displayGroup].items(), key=lambda x: x[1].get('Control').get('Order')))
+                orderedOutputs = OrderedDict(
+                    sorted(outputs[displayGroup].items(), key=lambda x: x[1].get('Control').get('Order')))
                 for bindKey, bind in orderedOutputs.items():
                     for modifier in bind.get('Modifiers', []):
                         writeText(context, sourceImg, transKey(modifier), screenState, font, True, False)
@@ -292,15 +274,16 @@ def createKeyboardImage(physicalKeys, modifiers, source, imageDevices, biggestFo
             sourceImg.save(filename=str(filePath))
     return True
 
+
 def appendKeyboardImage(createdImages, physicalKeys, modifiers, displayGroups, runId, public):
     def countKeyboardItems(physicalKeys):
         keyboardItems = 0
-        for  physicalKey in physicalKeys.values():
+        for physicalKey in physicalKeys.values():
             if physicalKey.get('Device') == 'Keyboard':
                 for bind in physicalKey.get('Binds').values():
                     keyboardItems = keyboardItems + len(bind.get('Controls'))
         return keyboardItems
-    
+
     def fontSizeForKeyBoardItems(physicalKeys):
         keyboardItems = countKeyboardItems(physicalKeys)
         if keyboardItems > 48:
@@ -310,10 +293,11 @@ def appendKeyboardImage(createdImages, physicalKeys, modifiers, displayGroups, r
         else:
             fontSize = 40
         return fontSize
-    
+
     fontSize = fontSizeForKeyBoardItems(physicalKeys)
     createKeyboardImage(physicalKeys, modifiers, 'keyboard', ['Keyboard'], fontSize, displayGroups, runId, public)
     createdImages.append('Keyboard')
+
 
 # Write text, possible wrapping
 def writeText(context, img, text, screenState, font, surround, newLine):
@@ -324,13 +308,13 @@ def writeText(context, img, text, screenState, font, surround, newLine):
     context.font_style = 'normal'
     context.font_size = font.size
     context.push()
-    context.stroke_width=0
-    context.fill_color=Color('Black')
-    context.fill_opacity=1
+    context.stroke_width = 0
+    context.fill_color = Color('Black')
+    context.fill_opacity = 1
 
     if text is None or text == '':
         text = 'invalid'
-        context.fill_color=Color('Red')
+        context.fill_color = Color('Red')
 
     metrics = context.get_font_metrics(img, text, multiline=False)
     if screenState['currentY'] + int(metrics.text_height + 32) > 2160:
@@ -349,10 +333,11 @@ def writeText(context, img, text, screenState, font, surround, newLine):
     if surround is True:
         # text y is baseline, rectangle y is top
         y = screenState['currentY'] - border
-        context.rectangle(left=x - (border * 4), top=y - (border * 2), width=int(metrics.text_width) + (border*8), height=int(metrics.text_height) + (border*4), radius=30)
+        context.rectangle(left=x - (border * 4), top=y - (border * 2), width=int(metrics.text_width) + (border * 8),
+                          height=int(metrics.text_height) + (border * 4), radius=30)
         width = int(metrics.text_width + 48)
     else:
-        width = int((metrics.text_width + 72)/48)*48
+        width = int((metrics.text_width + 72) / 48) * 48
     screenState['thisWidth'] = screenState['thisWidth'] + width
 
     if newLine is True:
@@ -364,17 +349,18 @@ def writeText(context, img, text, screenState, font, surround, newLine):
     else:
         screenState['currentX'] = screenState['currentX'] + width
 
+
 def createBlockImage(supportedDeviceKey, strokeColor='Red', fillColor='LightGreen', dryRun=False):
-    supportedDevice = supportedDevices[supportedDeviceKey]
+    supportedDevice = SUPPORTED_DEVICES[supportedDeviceKey]
     # Set up the path for our file
     templateName = supportedDevice['Template']
     config = Config(templateName)
     config.makeDir()
     filePath = config.pathWithSuffix('.svg')
-    
+
     with Image(filename='../res/' + supportedDevice['Template'] + '.svg') as sourceImg:
         with Drawing() as context:
-            if not dryRun:        
+            if not dryRun:
                 context.font = getFontPath('Regular', 'Normal')
                 context.text_antialias = True
                 context.font_style = 'normal'
@@ -384,7 +370,7 @@ def createBlockImage(supportedDeviceKey, strokeColor='Red', fillColor='LightGree
                 for (keycode, box) in hotasDetails[keyDevice].items():
                     if keycode == 'displayName':
                         continue
-                    if not dryRun:        
+                    if not dryRun:
                         context.stroke_width = 1
                         context.stroke_color = Color(strokeColor)
                         context.fill_color = Color(fillColor)
@@ -398,9 +384,10 @@ def createBlockImage(supportedDeviceKey, strokeColor='Red', fillColor='LightGree
                             # TODO dry this up
                             context.font = text['Style']['Font']
                             context.text(x=text['X'], y=text['Y'], body=text['Text'])
-            if not dryRun:        
+            if not dryRun:
                 context.draw(sourceImg)
                 sourceImg.save(filename=str(filePath))
+
 
 # Return whether a binding is a redundant specialisation and thus can be hidden
 def isRedundantSpecialisation(control, bind):
@@ -412,16 +399,18 @@ def isRedundantSpecialisation(control, bind):
             return True
     return False
 
+
 # Create a HOTAS image from the template plus bindings
-def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontSize, config, public, styling, deviceIndex, misconfigurationWarnings):
+def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontSize, config, public, styling,
+                     deviceIndex, misconfigurationWarnings):
     # Set up the path for our file
     runId = config.name
     if deviceIndex == 0:
         name = source
     else:
-        name = '%s-%s' % (source, deviceIndex)
+        name = f'{source}-{deviceIndex}'
     filePath = config.pathWithNameAndSuffix(name, '.svg')
-    
+
     # See if it already exists or if we need to recreate it
     if filePath.exists():
         return True
@@ -449,18 +438,17 @@ def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontS
                     continue
 
                 # Only show it if we are handling the appropriate index at this time
-                if itemDeviceIndex != deviceIndex: 
+                if itemDeviceIndex != deviceIndex:
                     continue
 
                 # Find the details for the control
                 texts = []
-                hotasDetail = None
                 try:
                     hotasDetail = hotasDetails.get(itemDevice).get(itemKey)
                 except AttributeError:
                     hotasDetail = None
                 if hotasDetail is None:
-                    logError('%s: No drawing box found for %s\n' % (runId, physicalKeySpec))
+                    logError(f'{runId}: No drawing box found for {physicalKeySpec}\n')
                     continue
 
                 # First obtain the modifiers if there are any
@@ -469,7 +457,8 @@ def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontS
                         style = ModifierStyles.index(keyModifier.get('Number'))
                     else:
                         style = groupStyles.get('Modifier')
-                    texts.append({'Text': 'Modifier %s' % (keyModifier.get('Number')), 'Group': 'Modifier', 'Style': style})
+                    texts.append(
+                        {'Text': f'Modifier {keyModifier.get("Number")}', 'Group': 'Modifier', 'Style': style})
                 if '::Joy' in physicalKeySpec:
                     # Same again but for positive modifier
                     for keyModifier in modifiers.get(physicalKeySpec.replace('::Joy', '::Pos_Joy'), []):
@@ -477,14 +466,16 @@ def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontS
                             style = ModifierStyles.index(keyModifier.get('Number'))
                         else:
                             style = groupStyles.get('Modifier')
-                        texts.append({'Text': 'Modifier %s' % (keyModifier.get('Number')), 'Group': 'Modifier', 'Style': style})
+                        texts.append(
+                            {'Text': f'Modifier {keyModifier.get("Number")}', 'Group': 'Modifier', 'Style': style})
                     # Same again but for negative modifier
                     for keyModifier in modifiers.get(physicalKeySpec.replace('::Joy', '::Neg_Joy'), []):
                         if styling == 'Modifier':
                             style = ModifierStyles.index(keyModifier.get('Number'))
                         else:
                             style = groupStyles.get('Modifier')
-                        texts.append({'Text': 'Modifier %s' % (keyModifier.get('Number')), 'Group': 'Modifier', 'Style': style})
+                        texts.append(
+                            {'Text': f'Modifier {keyModifier.get("Number")}', 'Group': 'Modifier', 'Style': style})
 
                 # Next obtain unmodified bindings
                 for modifier, bind in physicalKey.get('Binds').items():
@@ -493,19 +484,28 @@ def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontS
                             if isRedundantSpecialisation(control, bind):
                                 continue
                             # Check if this is a digital control on an analogue stick with an analogue equivalent
-                            if control.get('Type') == 'Digital' and control.get('HasAnalogue') is True and hotasDetail.get('Type') == 'Analogue':
+                            if control.get('Type') == 'Digital' and control.get(
+                                    'HasAnalogue') is True and hotasDetail.get('Type') == 'Analogue':
                                 if misconfigurationWarnings == '':
-                                    misconfigurationWarnings = '<h1>Misconfiguration detected</h1>You have one or more analogue controls configured incorrectly. Please see <a href="https://forums.frontier.co.uk/showthread.php?t=209792">this thread</a> for details of the problem and how to correct it.<br/> <b>Your misconfigured controls:</b> <b>%s</b> ' % control['Name']
+                                    misconfigurationWarnings = \
+                                        '<h1>Misconfiguration detected</h1>You have one or more analogue controls ' \
+                                        'configured incorrectly. Please see <a ' \
+                                        'href="https://forums.frontier.co.uk/showthread.php?t=209792">this thread</a> ' \
+                                        'for details of the problem and how to correct it.<br/> <b>Your misconfigured ' \
+                                        f'controls:</b> <b>{control["Name"]}</b> '
                                 else:
-                                    misconfigurationWarnings = '%s, <b>%s</b>' % (misconfigurationWarnings, control['Name'])
-                                #logError('%s: Digital command %s found on hotas control %s::%s\n' % (runId, control['Name'], itemDevice, itemKey))
+                                    misconfigurationWarnings = f'{misconfigurationWarnings}, <b>{control["Name"]}</b>'
+                                # logError('%s: Digital command %s found on hotas control %s::%s\n' % (runId, control['Name'], itemDevice, itemKey))
 
                             if styling == 'Modifier':
-                                texts.append({'Text': '%s' % (control.get('Name')), 'Group': control.get('Group'), 'Style': ModifierStyles.index(0)})
+                                texts.append({'Text': f'{control.get("Name")}', 'Group': control.get('Group'),
+                                              'Style': ModifierStyles.index(0)})
                             elif styling == 'Category':
-                                texts.append({'Text': '%s' % (control.get('Name')), 'Group': control.get('Group'), 'Style': categoryStyles.get(control.get('Category', 'General'))})
+                                texts.append({'Text': f'{control.get("Name")}', 'Group': control.get('Group'),
+                                              'Style': categoryStyles.get(control.get('Category', 'General'))})
                             else:
-                                texts.append({'Text': '%s' % (control.get('Name')), 'Group': control.get('Group'), 'Style': groupStyles.get(control.get('Group'))})
+                                texts.append({'Text': f'{control.get("Name")}', 'Group': control.get('Group'),
+                                              'Style': groupStyles.get(control.get('Group'))})
 
                 # Next obtain bindings with modifiers
                 # Lazy approach to do this but covers us for now
@@ -524,12 +524,17 @@ def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontS
                                 if isRedundantSpecialisation(control, bind):
                                     continue
                                 if styling == 'Modifier':
-                                    texts.append({'Text': '%s' % control.get('Name'), control.get('Group'): 'Modifier', 'Style': ModifierStyles.index(curModifierNum)})
+                                    texts.append({'Text': f'{control.get("Name")}', control.get('Group'): 'Modifier',
+                                                  'Style': ModifierStyles.index(curModifierNum)})
                                 elif styling == 'Category':
-                                    texts.append({'Text': '%s[%s]' % (control.get('Name'), curModifierNum), 'Group': control.get('Group'), 'Style': categoryStyles.get(control.get('Category', 'General'))})
+                                    texts.append({'Text': f'{control.get("Name")}[{curModifierNum}]',
+                                                  'Group': control.get('Group'),
+                                                  'Style': categoryStyles.get(control.get('Category', 'General'))})
                                 else:
-                                    texts.append({'Text': '%s[%s]' % (control.get('Name'), curModifierNum), 'Group': control.get('Group'), 'Style': groupStyles.get(control.get('Group'))})
-            
+                                    texts.append({'Text': f'{control.get("Name")}[{curModifierNum}]',
+                                                  'Group': control.get('Group'),
+                                                  'Style': groupStyles.get(control.get('Group'))})
+
                 # Obtain the layout of the texts and write them
                 texts = layoutText(sourceImg, context, texts, hotasDetail, biggestFontSize)
                 for text in texts:
@@ -552,21 +557,24 @@ def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontS
                     if '/' in modifierSpec:
                         # This is a logical modifier so ignore it
                         continue
-                    if physicalKeys.get(modifierSpec) is not None or physicalKeys.get(modifierSpec.replace('::Pos_Joy', '::Joy')) is not None or physicalKeys.get(modifierSpec.replace('::Neg_Joy', '::Joy')) is not None:
+                    if physicalKeys.get(modifierSpec) is not None or physicalKeys.get(
+                            modifierSpec.replace('::Pos_Joy', '::Joy')) is not None or physicalKeys.get(
+                        modifierSpec.replace('::Neg_Joy', '::Joy')) is not None:
                         # This has already been handled because it has other binds
                         continue
 
                     modifierKey = keyModifier.get('Key')
                     hotasDetail = hotasDetails.get(keyModifier.get('Device')).get(modifierKey)
                     if hotasDetail is None:
-                        logError('%s: No location for %s\n' % (runId, modifierSpec))
+                        logError(f'{runId}: No location for {modifierSpec}\n')
                         continue
 
                     if styling == 'Modifier':
                         style = ModifierStyles.index(keyModifier.get('Number'))
                     else:
                         style = groupStyles.get('Modifier')
-                    modifierTexts.append({'Text': 'Modifier %s' % (keyModifier.get('Number')), 'Group': 'Modifier', 'Style': style})
+                    modifierTexts.append(
+                        {'Text': f'Modifier {keyModifier.get("Number")}', 'Group': 'Modifier', 'Style': style})
 
                 if modifierTexts != []:
                     # Obtain the layout of the modifier text and write it
@@ -581,6 +589,7 @@ def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontS
             context.draw(sourceImg)
             sourceImg.save(filename=str(filePath))
     return True
+
 
 def layoutText(img, context, texts, hotasDetail, biggestFontSize):
     width = hotasDetail.get('width')
@@ -616,6 +625,7 @@ def layoutText(img, context, texts, hotasDetail, biggestFontSize):
 
     return texts
 
+
 # Calculate the best fit font size for our text given the dimensions of the box
 def calculateBestFitFontSize(context, width, height, texts, biggestFontSize):
     fontSize = biggestFontSize
@@ -646,10 +656,11 @@ def calculateBestFitFontSize(context, width, height, texts, biggestFontSize):
             if tooLong is False and currentY + metrics.text_height < height:
                 fits = True
             else:
-                fontSize = fontSize -1 
+                fontSize = fontSize - 1
     context.pop()
     return fontSize
-    
+
+
 def calculateBestFontSize(context, text, hotasDetail, biggestFontSize):
     width = hotasDetail.get('width')
     height = hotasDetail.get('height', 54)
@@ -680,7 +691,7 @@ def calculateBestFontSize(context, text, hotasDetail, biggestFontSize):
                         if fitText == '':
                             fitText = match
                         else:
-                            fitText = '%s\n%s' % (fitText, match)
+                            fitText = f'{fitText}\n{match}'
 
                     metrics = context.get_font_metrics(img, fitText, multiline=True)
                     if metrics.text_width <= hotasDetail.get('width'):
@@ -688,20 +699,24 @@ def calculateBestFontSize(context, text, hotasDetail, biggestFontSize):
                     else:
                         fontSize = fontSize - 1
 
-    return (fitText, fontSize, metrics)
+    return fitText, fontSize, metrics
+
 
 # Returns a set of controller names used by the binding
 def controllerNames(configObj):
     rawKeys = configObj['devices'].keys()
     controllers = [fullKey.split('::')[0] for fullKey in rawKeys]
     silencedControllers = ['Mouse', 'Keyboard']
+
     def displayName(controller):
         try:
             return hotasDetails[controller]['displayName']
         except:
             return controller
+
     controllers = {displayName(controller) for controller in controllers if not controller in silencedControllers}
     return controllers
+
 
 def printListItem(configObj, searchOpts):
     config = Config(configObj['runID'])
@@ -713,14 +728,15 @@ def printListItem(configObj, searchOpts):
     # Apply search filter if provided
     searchControllers = searchOpts.get('controllers', set())
     if searchControllers:
-        # Resolve device name from select list (from 'supportedDevices') into their 'handledDevices' (which are
+        # Resolve device name from select list (from 'SUPPORTED_DEVICES') into their 'handledDevices' (which are
         # referenced in the bindings files)
-        requestedDevices = [supportedDevices.get(controller,{}).get('HandledDevices',{}) for controller in searchControllers]
-        requestedDevices = set([item for sublist in requestedDevices for item in sublist]) # Flatten into a set
+        requestedDevices = [SUPPORTED_DEVICES.get(controller, {}).get('HandledDevices', {}) for controller in
+                            searchControllers]
+        requestedDevices = set([item for sublist in requestedDevices for item in sublist])  # Flatten into a set
 
         # Compare against the list of devices supported in this binding config
         devices = [fullKey.split('::')[0] for fullKey in configObj['devices'].keys()]
-        #print('<!-- Checking if any requested devices %s are in config\'s devices %s -->' % (requestedDevices, devices))
+        # print(f'<!-- Checking if any requested devices {requestedDevices} are in config\'s devices {devices} -->')
         if not any(requestedDevice in devices for requestedDevice in requestedDevices):
             return
 
@@ -728,19 +744,20 @@ def printListItem(configObj, searchOpts):
     if name == '':
         # if the uploader didn't bother to name their config, skip it
         return
-    print('''
+    print(f'''
     <tr>
         <td class="description">
-            <a href=%s>%s</a>
+            <a href={refcardURL}>{html.escape(name, quote=True)}</a>
         </td>
         <td class="controllers">
-            %s
+            {controllersStr}
         </td>
         <td class="date">
-            %s
+            {dateStr}
         </td>
     </tr>
-    ''' % (refcardURL, html.escape(name, quote=True), controllersStr, dateStr))
+    ''')
+
 
 def modeTitle(mode):
     if mode == Mode.list:
@@ -750,37 +767,9 @@ def modeTitle(mode):
     else:
         return 'EDRefCard'
 
-def printDeviceList(mode):
-    print('<div id="list"><h1>%s</h1></div>' % modeTitle(mode))
-    print('<ul>')
-    devices = sorted(supportedDevices.keys())
-    for device in devices:
-        print('<li><a href=device/%s>%s</a> <a href="list?deviceFilter=%s" title="search">&#128269;</a></li>' % (device, device, device))
-    print('</ul>')
-
-def printSearchForm(searchOptions):
-    print('<div>')
-    print('<form action="" id="searchForm">')
-    print('<table>')
-    print('<tr>')
-    print('<td><label for="deviceFilter">Select Controller(s)</label></td>')
-    print('<td><select name="deviceFilter" id="deviceFilter" multiple size=10>')
-    controllers = sorted(supportedDevices.keys())
-    for controller in controllers:
-        selected = "selected" if controller in searchOptions.get("controllers",[]) else ""
-        print('<option value="%s" %s>%s</option>' % (controller, selected, controller))
-    print('</select></td>')
-    print('</tr>')
-    print('<tr>')
-    print('<td colspan=2><input type="submit" value="Search"></input></td>')
-    print('</tr>')
-    print('</table>')
-    print('</form>')
-    print('</div>')
 
 def printList(mode, searchOpts):
-
-    print('<div id="list"><h1>%s</h1></div>' % modeTitle(mode))
+    print(f'<div id="list"><h1>{modeTitle(mode)}</h1></div>')
 
     printSearchForm(searchOpts)
 
@@ -794,48 +783,54 @@ def printList(mode, searchOpts):
         </tr>
     ''')
 
-    print("<!--\nSearch options: \n%s\n-->\n" % str(searchOpts))
+    print(f"<!--\nSearch options: \n{str(searchOpts)}\n-->\n")
     for obj in objs:
         try:
             printListItem(obj, searchOpts)
         except Exception as e:
-            print('<tr><td>ERROR in item %s<td>%s</td></td></tr>' % (obj['runID'], str(e)))
-            #cgitb.handler() # only for use when needed
+            print(f'<tr><td>ERROR in item {obj["runID"]}<td>{str(e)}</td></td></tr>')
+            # cgitb.handler() # only for use when needed
             continue
-    print ('</table>')
+    print('</table>')
+
 
 def printRefCard(config, public, createdImages, deviceForBlockImage, errors):
     runId = config.name
     if errors.unhandledDevicesWarnings != '':
-        print('%s<br/>' % errors.unhandledDevicesWarnings)
+        print(f'{errors.unhandledDevicesWarnings}<br/>')
     if errors.misconfigurationWarnings != '':
-        print('%s<br/>' % errors.misconfigurationWarnings)
+        print(f'{errors.misconfigurationWarnings}<br/>')
     if errors.deviceWarnings != '':
-        print('%s<br/>' % errors.deviceWarnings)
+        print(f'{errors.deviceWarnings}<br/>')
     if errors.errors != '':
-        print('%s<br/>' % errors.errors)
+        print(f'{errors.errors}<br/>')
     else:
         for createdImage in createdImages:
             if '::' in createdImage:
                 # Split the created image in to device and device index
-                m = re.search(r'(.*)\:\:([01])', createdImage)
+                m = re.search(r'(.*)::([01])', createdImage)
                 device = m.group(1)
                 deviceIndex = int(m.group(2))
             else:
                 device = createdImage
                 deviceIndex = 0
             if deviceIndex == 0:
-                print('<img width="100%%" src="../configs/%s/%s-%s.svg"/><br/>' % (runId[:2], runId, supportedDevices[device]['Template']))
+                print(
+                    f'<img width="100%" src="../configs/{runId[:2]}/{runId}-{SUPPORTED_DEVICES[device]["Template"]}.svg"/><br/>')
             else:
-                print('<img width="100%%" src="../configs/%s/%s-%s-%s.svg"/><br/>' % (runId[:2], runId, supportedDevices[device]['Template'], deviceIndex))
+                print(
+                    f'<img width="100%" src="../configs/{runId[:2]}/{runId}-{SUPPORTED_DEVICES[device]["Template"]}-{deviceIndex}.svg"/><br/>')
         if deviceForBlockImage is not None:
-            print('<img width="100%%" src="../configs/%s/%s.svg"/><br/>' % (supportedDevices[deviceForBlockImage]['Template'][:2], supportedDevices[deviceForBlockImage]['Template']))
+            print(
+                f'<img width="100%" src="../configs/{SUPPORTED_DEVICES[deviceForBlockImage]["Template"][:2]}/{SUPPORTED_DEVICES[deviceForBlockImage]["Template"]}.svg"/><br/>')
         if deviceForBlockImage is None and public is True:
             linkURL = config.refcardURL()
             bindsURL = config.bindsURL()
-            print('<p/>Link directly to this page with the URL <a href="%s">%s</a>' % (linkURL, linkURL))
-            print('<p/>You can download the custom binds file for the configuration shown above at <a href="%s">%s</a>.  Replace your existing custom binds file with this file to use these controls.' % (bindsURL, bindsURL))
+            print(f'<p/>Link directly to this page with the URL <a href="{linkURL}">{linkURL}</a>')
+            print(
+                f'<p/>You can download the custom binds file for the configuration shown above at <a href="{bindsURL}">{bindsURL}</a>.  Replace your existing custom binds file with this file to use these controls.')
     print('<p/>')
+
 
 def printBodyMain(mode, options, config, public, createdImages, deviceForBlockImage, errors):
     if mode == Mode.list:
@@ -845,39 +840,6 @@ def printBodyMain(mode, options, config, public, createdImages, deviceForBlockIm
     else:
         printRefCard(config, public, createdImages, deviceForBlockImage, errors)
 
-def printBody(mode, options, config, public, createdImages, deviceForBlockImage, errors):
-    # guard against bad server configs
-    encoding = sys.stdout.encoding
-    if encoding != 'utf-8':
-        print(f'''
-        <p>It seems that your server is configured to use encoding "{encoding}" rather than "utf-8".<br>
-        For Apache, this can be fixed by adding <code>SetEnv PYTHONIOENCODING utf-8</code> at the end of <code>/etc/apache2/apache2.conf</code>.</p>
-        ''')
-        return
-    printBodyMain(mode, options, config, public, createdImages, deviceForBlockImage, errors)
-    printSupportPara()
-    print('<p><a href="/">Home</a>.</p>')
-
-def printSupportPara():
-    supportPara = '<p>Version %s<br>Please direct questions, suggestions and support requests to <a href="https://forums.frontier.co.uk/threads/edrefcard-makes-a-printable-reference-card-of-your-controller-bindings.464400/">the thread on the official Elite: Dangerous forums</a>.</p>' % __version__
-    print(supportPara)
-
-def printHTML(mode, options, config, public, createdImages, deviceForBlockImage, errors):
-    print('''Content-Type: text/html
-
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="robots" content="all">
-    <title>%s</title>
-    <link href='https://fonts.googleapis.com/css?family=Domine:400,700' rel='stylesheet' type='text/css'>
-    <style type="text/css" media="all">@import"ed.css";</style>
-</head>
-<body>''' % modeTitle(mode))
-    printBody(mode, options, config, public, createdImages, deviceForBlockImage, errors)
-    print('''
-</body>
-</html>''')
 
 # Parser section
 
@@ -888,20 +850,18 @@ def parseBindings(runId, xml, displayGroups, errors):
     except SyntaxError as e:
         errors.errors = '''<h3>There was a problem parsing the file you supplied.</h3>
         <p>%s.</p>
-        <p>Possibly you submitted the wrong file, or hand-edited it and made a mistake.</p>''' % html.escape(str(e), quote=True)
+        <p>Possibly you submitted the wrong file, or hand-edited it and made a mistake.</p>''' % html.escape(str(e),
+                                                                                                             quote=True)
         xml = '<root></root>'
         tree = etree.fromstring(bytes(xml, 'utf-8'), parser=parser)
-    
+
     physicalKeys = {}
     modifiers = {}
     hotasModifierNum = 1
     keyboardModifierNum = 101
     devices = {}
 
-    if len(tree.findall(".//*[@Device='T16000MTHROTTLE']")) > 0:
-        hasT16000MThrottle = True
-    else:
-        hasT16000MThrottle = False
+    hasT16000MThrottle = len(tree.findall(".//*[@Device='T16000MTHROTTLE']")) > 0
 
     xmlBindings = tree.findall(".//Binding") + tree.findall(".//Primary") + tree.findall(".//Secondary")
     for xmlBinding in xmlBindings:
@@ -912,7 +872,7 @@ def parseBindings(runId, xml, displayGroups, errors):
             continue
 
         # Rewrite the device if this is a T16000M stick and we have a T16000M throttle
-        if device == 'T16000M' and hasT16000MThrottle == True:
+        if device == 'T16000M' and hasT16000MThrottle:
             device = 'T16000MFCS'
 
         deviceIndex = xmlBinding.get('DeviceIndex', 0)
@@ -930,9 +890,9 @@ def parseBindings(runId, xml, displayGroups, errors):
             # Rewrite the device if this is a T16000M stick and we have a T16000M throttle
             if modifierDevice == 'T16000M' and hasT16000MThrottle == True:
                 modifierDevice = 'T16000MFCS'
-            modifierKey = '%s::%s::%s' % (modifierDevice, modifierInfo.get('DeviceIndex', 0), modifierInfo.get('Key'))
+            modifierKey = f'{modifierDevice}::{modifierInfo.get("DeviceIndex", 0)}::{modifierInfo.get("Key")}'
             return modifierKey
-            
+
         modifiersInfo = xmlBinding.findall('Modifier')
         modifiersInfo = sorted(modifiersInfo, key=modifierSortKey)
         modifiersKey = 'Unmodified'
@@ -943,7 +903,7 @@ def parseBindings(runId, xml, displayGroups, errors):
                 if modifiersKey == '':
                     modifiersKey = modifierKey
                 else:
-                    modifiersKey = '%s/%s' % (modifiersKey, modifierKey)
+                    modifiersKey = f'{modifiersKey}/{modifierKey}'
             # See if we already have the modifier
             foundKeyModifier = False
             keyModifiers = modifiers.get(modifiersKey, [])
@@ -956,11 +916,10 @@ def parseBindings(runId, xml, displayGroups, errors):
             if not foundKeyModifier:
                 # Create individual modifiers
                 for modifierInfo in modifiersInfo:
-                    modifier = {}
-                    modifier['ModifierKey'] = modifiersKey
+                    modifier = {'ModifierKey': modifiersKey}
                     modifierDevice = modifierInfo.get('Device')
                     # Rewrite the device if this is a T16000M stick and we have a T16000M throttle
-                    if modifierDevice == 'T16000M' and hasT16000MThrottle == True:
+                    if modifierDevice == 'T16000M' and hasT16000MThrottle:
                         modifierDevice = 'T16000MFCS'
                     if modifierDevice == 'Keyboard':
                         modifier['Number'] = keyboardModifierNum
@@ -969,14 +928,13 @@ def parseBindings(runId, xml, displayGroups, errors):
                     modifier['Device'] = modifierDevice
                     modifier['DeviceIndex'] = modifierInfo.get('DeviceIndex', 0)
                     modifier['Key'] = modifierInfo.get('Key')
-                    modifierKey = '%s::%s::%s' % (modifierDevice, modifierInfo.get('DeviceIndex', 0), modifierInfo.get('Key'))
+                    modifierKey = f'{modifierDevice}::{modifierInfo.get("DeviceIndex", 0)}::{modifierInfo.get("Key")}'
                     updatedModifiers = modifiers.get(modifierKey, [])
                     updatedModifiers.append(modifier)
                     modifiers[modifierKey] = updatedModifiers
                 if '/' in modifiersKey:
                     # Also need to add composite modifier
-                    modifier = {}
-                    modifier['ModifierKey'] = modifiersKey
+                    modifier = {'ModifierKey': modifiersKey}
                     modifierDevice = modifierInfo.get('Device')
                     # Rewrite the device if this is a T16000M stick and we have a T16000M throttle
                     if modifierDevice == 'T16000M' and hasT16000MThrottle == True:
@@ -992,44 +950,35 @@ def parseBindings(runId, xml, displayGroups, errors):
                     hotasModifierNum = hotasModifierNum + 1
         control = controls.get(controlName)
         if control is None:
-            logError('%s: No control for %s\n' % (runId, controlName))
-            control = {}
-            control['Group'] = 'General'
-            control['Name'] = controlName
-            control['Order'] = 999
-            control['HideIfSameAs'] = []
-            control['Type'] = 'Digital'
+            logError(f'{runId}: No control for {controlName}\n')
+            control = {'Group': 'General', 'Name': controlName, 'Order': 999, 'HideIfSameAs': [], 'Type': 'Digital'}
         if control['Group'] not in displayGroups:
             # The user isn't interested in this control group so drop it
             continue
 
-        itemKey = '%s::%s::%s' % (device, deviceIndex, key)
-        deviceKey = '%s::%s' % (device, deviceIndex)
+        itemKey = f'{device}::{deviceIndex}::{key}'
+        deviceKey = f'{device}::{deviceIndex}'
         # Obtain the relevant supported device
         thisDevice = None
-        for supportedDevice in supportedDevices.values():
+        for supportedDevice in SUPPORTED_DEVICES.values():
             if device in supportedDevice['HandledDevices']:
                 thisDevice = supportedDevice
                 break
         devices[deviceKey] = thisDevice
         physicalKey = physicalKeys.get(itemKey)
         if physicalKey is None:
-            physicalKey = {}
-            physicalKey['Device'] = device
-            physicalKey['DeviceIndex'] = deviceIndex
-            # Get the unaltered key (might be prefixed with Neg_ or Pos_) and the mapped key
-            physicalKey['BaseKey'] = xmlBinding.get('Key')
-            physicalKey['Key'] = key
-            physicalKey['Binds'] = {}
+            physicalKey = {'Device': device, 'DeviceIndex': deviceIndex, 'Binds': {},
+                           # Get the unaltered key (might be prefixed with Neg_ or Pos_) and the mapped key
+                           'BaseKey': xmlBinding.get('Key'), 'Key': key}
             physicalKeys[itemKey] = physicalKey
         bind = physicalKey['Binds'].get(modifiersKey)
         if bind is None:
-            bind = {}
-            bind['Controls'] = OrderedDict()
+            bind = {'Controls': OrderedDict()}
             physicalKey['Binds'][modifiersKey] = bind
         bind['Controls'][controlName] = control
 
-    return (physicalKeys, modifiers, devices)
+    return physicalKeys, modifiers, devices
+
 
 def parseForm(form):
     displayGroups = []
@@ -1057,7 +1006,7 @@ def parseForm(form):
         displayGroups.append('Holo-Me')
     if form.getvalue('showmisc'):
         displayGroups.append('Misc')
-    
+
     styling = 'None'  # Yes we do mean a string 'None'
     if form.getvalue('styling') == 'group':
         styling = 'Group'
@@ -1068,81 +1017,54 @@ def parseForm(form):
     description = form.getvalue('description')
     if description is None:
         description = ''
-    return (displayGroups, styling, description)
-    
-def determineMode(form):
-    deviceForBlockImage = form.getvalue('blocks')
-    wantList = form.getvalue('list')
-    wantDeviceList = form.getvalue('devicelist')
-    runIdToReplay = form.getvalue('replay')
-    description = form.getvalue('description')
-    if description is None:
-        description = ''
-    
-    if len(description) > 0 and not description[0].isalnum():
-        mode = Mode.invalid
-    elif deviceForBlockImage is not None:
-        mode = Mode.blocks
-    elif wantList is not None:
-        mode = Mode.list
-    elif wantDeviceList is not None:
-        mode = Mode.listDevices
-    elif runIdToReplay is not None:
-        mode = Mode.replay
-    else:
-        mode = Mode.generate
-    return mode
+    return displayGroups, styling, description
+
 
 def saveReplayInfo(config, description, styling, displayGroups, devices, errors):
-    replayInfo = {}
-    replayInfo['displayGroups'] = displayGroups
-    replayInfo['misconfigurationWarnings'] = errors.misconfigurationWarnings
-    replayInfo['unhandledDevicesWarnings'] = errors.unhandledDevicesWarnings
-    replayInfo['deviceWarnings'] = errors.deviceWarnings
-    replayInfo['styling'] = styling
-    replayInfo['description'] = description
-    replayInfo['timestamp'] = datetime.datetime.now(datetime.timezone.utc)
-    replayInfo['devices'] = devices
+    replayInfo = {'displayGroups': displayGroups, 'misconfigurationWarnings': errors.misconfigurationWarnings,
+                  'unhandledDevicesWarnings': errors.unhandledDevicesWarnings, 'deviceWarnings': errors.deviceWarnings,
+                  'styling': styling, 'description': description,
+                  'timestamp': datetime.datetime.now(datetime.timezone.utc), 'devices': devices}
     replayPath = config.pathWithSuffix('.replay')
     with replayPath.open('wb') as pickleFile:
         pickle.dump(replayInfo, pickleFile)
 
+
 def parseLocalFile(filePath):
     displayGroups = groupStyles.keys()
-    styling = 'None'  # Yes we do mean a string 'None'
     config = Config('000000')
     errors = Errors()
     with filePath.open() as f:
         xml = f.read()
         (physicalKeys, modifiers, devices) = parseBindings(config.name, xml, displayGroups, errors)
-        return ((physicalKeys, modifiers, devices), errors)
+        return (physicalKeys, modifiers, devices), errors
+
 
 # API section
 
 def processForm(form):
-    config = Config.newRandom()
+    config = Config.new_random()
     styling = 'None'
     description = ''
     options = {}
     public = False
     createdImages = []
     errors = Errors()
-    
+
     deviceForBlockImage = form.getvalue('blocks')
     mode = determineMode(form)
     if mode is Mode.invalid:
         errors.errors = 'That is not a valid description. Leading punctuation is not allowed.</h1>'
-        xml = '<root></root>'        
+        xml = '<root></root>'
     elif mode is Mode.blocks:
         try:
             deviceForBlockImage = form.getvalue('blocks')
             createBlockImage(deviceForBlockImage)
         except KeyError:
-            errors.errors = '<h1>%s is not a supported controller.</h1>' % deviceForBlockImage
+            errors.errors = f'<h1>{deviceForBlockImage} is not a supported controller.</h1>'
             xml = '<root></root>'
         createdImages = []
     elif mode is Mode.replay:
-        fileitem = {}
         runId = form.getvalue('replay')
         public = True
         try:
@@ -1156,25 +1078,25 @@ def processForm(form):
             try:
                 with replayPath.open("rb") as pickleFile:
                     replayInfo = pickle.load(pickleFile)
-                    displayGroups =  replayInfo.get('displayGroups', ['Galaxy map', 'General', 'Head look', 'SRV', 'Ship', 'UI'])
-                    errors.misconfigurationWarnings = replayInfo.get('misconfigurationWarnings', replayInfo.get('warnings', ''))
+                    displayGroups = replayInfo.get('displayGroups',
+                                                   ['Galaxy map', 'General', 'Head look', 'SRV', 'Ship', 'UI'])
+                    errors.misconfigurationWarnings = replayInfo.get('misconfigurationWarnings',
+                                                                     replayInfo.get('warnings', ''))
                     errors.deviceWarnings = replayInfo.get('deviceWarnings', '')
                     errors.unhandledDevicesWarnings = ''
                     styling = replayInfo.get('styling', 'None')
                     description = replayInfo.get('description', '')
-                    timestamp = replayInfo.get('timestamp')
                     # devices = replayInfo['devices']
             except FileNotFoundError:
                 displayGroups = ['Galaxy map', 'General', 'Head look', 'SRV', 'Ship', 'UI']
         except (ValueError, FileNotFoundError):
-            errors.errors = '<h1>Configuration "%s" not found</h1>' % runId
+            errors.errors = f'<h1>Configuration "{runId}" not found</h1>'
             displayGroups = ['Galaxy map', 'General', 'Head look', 'SRV', 'Ship', 'UI']
             xml = '<root></root>'
     elif mode is Mode.generate:
-        config = Config.newRandom()
+        config = Config.new_random()
         config.makeDir()
         runId = config.name
-        displayGroups = []
         (displayGroups, styling, description) = parseForm(form)
         xml = form.getvalue('bindings')
         if xml is None or xml == b'':
@@ -1185,21 +1107,21 @@ def processForm(form):
             bindsPath = config.pathWithSuffix('.binds')
             with codecs.open(str(bindsPath), 'w', 'utf-8') as xmlOutput:
                 xmlOutput.write(xml)
-        
+
         public = len(description) > 0
     elif mode is Mode.list:
         deviceFilters = form.getvalue("deviceFilter", [])
         if deviceFilters:
             if type(deviceFilters) is not type([]):
-                deviceFilters = [ deviceFilters ]
+                deviceFilters = [deviceFilters]
             options['controllers'] = set(deviceFilters)
 
     if mode is Mode.replay or mode is Mode.generate:
         (physicalKeys, modifiers, devices) = parseBindings(runId, xml, displayGroups, errors)
-        
+
         alreadyHandledDevices = []
         createdImages = []
-        for supportedDeviceKey, supportedDevice in supportedDevices.items():
+        for supportedDeviceKey, supportedDevice in SUPPORTED_DEVICES.items():
             if supportedDeviceKey == 'Keyboard':
                 # We handle the keyboard separately below
                 continue
@@ -1208,7 +1130,7 @@ def processForm(form):
                 # See if we handle this device
                 handled = False
                 for handledDevice in supportedDevice.get('KeyDevices', supportedDevice.get('HandledDevices')):
-                    if devices.get('%s::%s' % (handledDevice, deviceIndex)) is not None:
+                    if devices.get(f'{handledDevice}::{deviceIndex}') is not None:
                         handled = True
                         break
 
@@ -1216,44 +1138,36 @@ def processForm(form):
                     # See if we have any new bindings for this device
                     hasNewBindings = False
                     for device in supportedDevice.get('KeyDevices', supportedDevice.get('HandledDevices')):
-                        deviceKey = '%s::%s' % (device, deviceIndex)
+                        deviceKey = f'{device}::{deviceIndex}'
                         if deviceKey not in alreadyHandledDevices:
                             hasNewBindings = True
                             break
                     if hasNewBindings is True:
-                        createHOTASImage(physicalKeys, modifiers, supportedDevice['Template'], supportedDevice['HandledDevices'], 40, config, public, styling, deviceIndex, errors.misconfigurationWarnings)
-                        createdImages.append('%s::%s' % (supportedDeviceKey, deviceIndex))
+                        createHOTASImage(physicalKeys, modifiers, supportedDevice['Template'],
+                                         supportedDevice['HandledDevices'], 40, config, public, styling, deviceIndex,
+                                         errors.misconfigurationWarnings)
+                        createdImages.append(f'{supportedDeviceKey}::{deviceIndex}')
                         for handledDevice in supportedDevice['HandledDevices']:
-                            alreadyHandledDevices.append('%s::%s' % (handledDevice, deviceIndex))
-        
+                            alreadyHandledDevices.append(f'{handledDevice}::{deviceIndex}')
+
         if devices.get('Keyboard::0') is not None:
             appendKeyboardImage(createdImages, physicalKeys, modifiers, displayGroups, runId, public)
-        
+
         for deviceKey, device in devices.items():
             # Arduino Leonardo is used for head tracking so ignore it, along with vJoy (Tobii Eyex) and 16D00AEA (EDTracker)
             if device is None and deviceKey != 'Mouse::0' and deviceKey != 'ArduinoLeonardo::0' and deviceKey != 'vJoy::0' and deviceKey != 'vJoy::1' and deviceKey != '16D00AEA::0':
-                logError('%s: found unsupported device %s\n' % (runId, deviceKey))
-                if errors.unhandledDevicesWarnings  == '':
+                logError(f'{runId}: found unsupported device {deviceKey}\n')
+                if errors.unhandledDevicesWarnings == '':
                     errors.unhandledDevicesWarnings = '<h1>Unknown controller detected</h1>You have a device that is not supported at this time. Please report details of your device by following the link at the bottom of this page supplying the reference "%s" and we will attempt to add support for it.' % runId
-            if device is not None and 'ThrustMasterWarthogCombined' in device['HandledDevices'] and errors.deviceWarnings == '':
+            if device is not None and 'ThrustMasterWarthogCombined' in device[
+                'HandledDevices'] and errors.deviceWarnings == '':
                 errors.deviceWarnings = '<h2>Mapping Software Detected</h2>You are using the ThrustMaster TARGET software. As a result it is possible that not all of the controls will show up. If you have missing controls then you should remove the mapping from TARGET and map them using Elite\'s own configuration UI.'
-        
+
         if len(createdImages) == 0 and errors.misconfigurationWarnings == '' and errors.unhandledDevicesWarnings == '' and errors.errors == '':
             errors.errors = '<h1>The file supplied does not have any bindings for a supported controller or keyboard.</h1>'
-    
+
     # Save variables for later replays
     if (mode is Mode.generate and public):
         saveReplayInfo(config, description, styling, displayGroups, devices, errors)
 
     printHTML(mode, options, config, public, createdImages, deviceForBlockImage, errors)
-
-def logError(message):
-    sys.stderr.write("EDRefCard: %s", message)
-
-def main():
-    cgitb.enable()
-    form = cgi.FieldStorage()
-    processForm(form)
-
-if __name__ == '__main__':
-    main()
