@@ -19,80 +19,67 @@ import re
 from pathlib import Path
 from urllib.parse import urljoin
 
-from .data import SUPPORTED_DEVICES, HOTAS_DETAILS, KEYMAP
+from data import SUPPORTED_DEVICES, HOTAS_DETAILS, KEYMAP
+
+
+class ConfigFactory:
+    def __init__(self, app):
+        self.app = app
+
+    def create(self, name):
+        if not name:
+            raise ValueError('Config must have a name')
+        return Config(self, name)
+
+    def create_random(self):
+        def new_name():
+            return ''.join(random.choice(string.ascii_lowercase) for x in range(6))
+
+        config = Config(self, new_name())
+        while config.path.exists():
+            config = Config(self, new_name())
+        return config
+
+    @property
+    def root_path(self):
+        return Path(self.app.root_path) / 'configs'
+
+    def all(self, sort_key=None):
+        def unpickle(path):
+            with path.open('rb') as file:
+                config = pickle.load(file)
+                config['runID'] = path.stem
+            return config
+
+        objs = [unpickle(path) for path in self.root_path.glob('**/*.replay')]
+        objs.sort(key=sort_key)
+        return objs
 
 
 class Config:
     @staticmethod
-    def dirRoot():
-        return Path(os.environ.get('CONTEXT_DOCUMENT_ROOT', '../www')).resolve()
-
-    @staticmethod
-    def webRoot():
+    def web_root():
         return urljoin(os.environ.get('SCRIPT_URI', 'https://edrefcard.info/'), '/')
 
-    @staticmethod
-    def new_random():
-        config = Config(Config.randomName())
-        while config.exists():
-            config = Config(Config.randomName())
-        return config
-
-    def __init__(self, name):
-        if not name:
-            raise ValueError('Config must have a name')
+    def __init__(self, factory, name):
+        self.factory = factory
         self.name = name
 
     def __repr__(self):
         return f"Config('{self.name}')"
 
-    @staticmethod
-    def randomName():
-        return ''.join(random.choice(string.ascii_lowercase) for x in range(6))
-
-    @staticmethod
-    def configsPath():
-        return Config.dirRoot() / 'configs'
-
+    @property
     def path(self):
-        path = Config.configsPath() / self.name[:2] / self.name
-        return path
+        return self.factory.root_path / self.name[:2] / self.name
 
     def pathWithNameAndSuffix(self, name, suffix):
-        newName = '-'.join([self.name, name])
-        p = self.path().with_name(newName)
-        return p.with_suffix(suffix)
+        return self.path.with_name(f'{self.name}-{name}').with_suffix(suffix)
 
-    def pathWithSuffix(self, suffix):
-        return self.path().with_suffix(suffix)
-
-    def exists(self):
-        return self.path().exists()
-
-    def makeDir(self):
-        self.path().parent.mkdir(parents=True, exist_ok=True)
-
-    def refcardURL(self):
-        return urljoin(Config.webRoot(), f"binds/{self.name}")
+    def mkdir(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def bindsURL(self):
-        return urljoin(Config.webRoot(), f"configs/{self.name}.binds")
-
-    @staticmethod
-    def unpickle(path):
-        with path.open('rb') as file:
-            object = pickle.load(file)
-            object['runID'] = path.stem
-        return object
-
-    @staticmethod
-    def allConfigs(sortKey=None):
-        configsPath = Config.configsPath()
-        picklePaths = list(configsPath.glob('**/*.replay'))
-        objs = [Config.unpickle(path) for path in picklePaths]
-        if sortKey is not None:
-            objs.sort(key=sortKey)
-        return objs
+        return urljoin(Config.web_root(), f"configs/{self.name}.binds")
 
 
 class Errors:
@@ -110,7 +97,11 @@ class Errors:
 
     def __repr__(self):
         return (
-            f"Errors(unhandledDevicesWarnings='{self.unhandledDevicesWarnings}', deviceWarnings='{self.deviceWarnings}', misconfigurationWarnings='{self.misconfigurationWarnings}', errors='{self.errors}')")
+            f"Errors(unhandledDevicesWarnings='{self.unhandledDevicesWarnings}', "
+            f"deviceWarnings='{self.deviceWarnings}', "
+            f"misconfigurationWarnings='{self.misconfigurationWarnings}', "
+            f"errors='{self.errors}')"
+        )
 
 
 # Utility section
@@ -179,7 +170,7 @@ class ModifierStyles:
 def transKey(key):
     if key is None:
         return None
-    trans = keymap.get(key)
+    trans = KEYMAP.get(key)
     if trans is None:
         trans = key.replace('Key_', '')
     return trans
@@ -188,7 +179,7 @@ def transKey(key):
 # Output section
 
 def writeUrlToDrawing(config, drawing, public):
-    url = config.refcardURL() if public else Config.webRoot()
+    url = config.refcardURL() if public else Config.web_root()
     drawing.push()
     drawing.font = getFontPath('SemiBold', 'Normal')
     drawing.font_size = 72
@@ -355,8 +346,8 @@ def createBlockImage(supportedDeviceKey, strokeColor='Red', fillColor='LightGree
     # Set up the path for our file
     templateName = supportedDevice['Template']
     config = Config(templateName)
-    config.makeDir()
-    filePath = config.pathWithSuffix('.svg')
+    config.mkdir()
+    filePath = config.path.with_suffix('.svg')
 
     with Image(filename='../res/' + supportedDevice['Template'] + '.svg') as sourceImg:
         with Drawing() as context:
@@ -367,7 +358,7 @@ def createBlockImage(supportedDeviceKey, strokeColor='Red', fillColor='LightGree
             maxFontSize = 40
 
             for keyDevice in supportedDevice.get('KeyDevices', supportedDevice.get('HandledDevices')):
-                for (keycode, box) in hotasDetails[keyDevice].items():
+                for (keycode, box) in HOTAS_DETAILS[keyDevice].items():
                     if keycode == 'displayName':
                         continue
                     if not dryRun:
@@ -444,7 +435,7 @@ def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontS
                 # Find the details for the control
                 texts = []
                 try:
-                    hotasDetail = hotasDetails.get(itemDevice).get(itemKey)
+                    hotasDetail = HOTAS_DETAILS.get(itemDevice).get(itemKey)
                 except AttributeError:
                     hotasDetail = None
                 if hotasDetail is None:
@@ -564,7 +555,7 @@ def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontS
                         continue
 
                     modifierKey = keyModifier.get('Key')
-                    hotasDetail = hotasDetails.get(keyModifier.get('Device')).get(modifierKey)
+                    hotasDetail = HOTAS_DETAILS.get(keyModifier.get('Device')).get(modifierKey)
                     if hotasDetail is None:
                         logError(f'{runId}: No location for {modifierSpec}\n')
                         continue
@@ -710,7 +701,7 @@ def controllerNames(configObj):
 
     def displayName(controller):
         try:
-            return hotasDetails[controller]['displayName']
+            return HOTAS_DETAILS[controller]['displayName']
         except:
             return controller
 
@@ -759,41 +750,6 @@ def printListItem(configObj, searchOpts):
     ''')
 
 
-def modeTitle(mode):
-    if mode == Mode.list:
-        return 'EDRefCard: public configurations'
-    elif mode == Mode.listDevices:
-        return 'EDRefCard: supported devices'
-    else:
-        return 'EDRefCard'
-
-
-def printList(mode, searchOpts):
-    print(f'<div id="list"><h1>{modeTitle(mode)}</h1></div>')
-
-    printSearchForm(searchOpts)
-
-    objs = Config.allConfigs(sortKey=lambda obj: str(obj['description']).casefold())
-    print('<table>')
-    print('''
-        <tr>
-            <th align="left" class="description">Description</th>
-            <th align="left" class="controllers">Controllers</th>
-            <th align="left" class="date">Date</th>
-        </tr>
-    ''')
-
-    print(f"<!--\nSearch options: \n{str(searchOpts)}\n-->\n")
-    for obj in objs:
-        try:
-            printListItem(obj, searchOpts)
-        except Exception as e:
-            print(f'<tr><td>ERROR in item {obj["runID"]}<td>{str(e)}</td></td></tr>')
-            # cgitb.handler() # only for use when needed
-            continue
-    print('</table>')
-
-
 def printRefCard(config, public, createdImages, deviceForBlockImage, errors):
     runId = config.name
     if errors.unhandledDevicesWarnings != '':
@@ -832,15 +788,6 @@ def printRefCard(config, public, createdImages, deviceForBlockImage, errors):
     print('<p/>')
 
 
-def printBodyMain(mode, options, config, public, createdImages, deviceForBlockImage, errors):
-    if mode == Mode.list:
-        printList(mode, options)
-    elif mode == Mode.listDevices:
-        printDeviceList(mode)
-    else:
-        printRefCard(config, public, createdImages, deviceForBlockImage, errors)
-
-
 # Parser section
 
 def parseBindings(runId, xml, displayGroups, errors):
@@ -848,10 +795,9 @@ def parseBindings(runId, xml, displayGroups, errors):
     try:
         tree = etree.fromstring(bytes(xml, 'utf-8'), parser=parser)
     except SyntaxError as e:
-        errors.errors = '''<h3>There was a problem parsing the file you supplied.</h3>
-        <p>%s.</p>
-        <p>Possibly you submitted the wrong file, or hand-edited it and made a mistake.</p>''' % html.escape(str(e),
-                                                                                                             quote=True)
+        errors.errors = f'''<h3>There was a problem parsing the file you supplied.</h3>
+        <p>{e}</p>
+        <p>Possibly you submitted the wrong file, or hand-edited it and made a mistake.</p>'''
         xml = '<root></root>'
         tree = etree.fromstring(bytes(xml, 'utf-8'), parser=parser)
 
@@ -1025,7 +971,7 @@ def saveReplayInfo(config, description, styling, displayGroups, devices, errors)
                   'unhandledDevicesWarnings': errors.unhandledDevicesWarnings, 'deviceWarnings': errors.deviceWarnings,
                   'styling': styling, 'description': description,
                   'timestamp': datetime.datetime.now(datetime.timezone.utc), 'devices': devices}
-    replayPath = config.pathWithSuffix('.replay')
+    replayPath = config.path.with_suffix('.replay')
     with replayPath.open('wb') as pickleFile:
         pickle.dump(replayInfo, pickleFile)
 
@@ -1069,8 +1015,8 @@ def processForm(form):
         public = True
         try:
             config = Config(runId)
-            bindsPath = config.pathWithSuffix('.binds')
-            replayPath = config.pathWithSuffix('.replay')
+            bindsPath = config.path.with_suffix('.binds')
+            replayPath = config.path.with_suffix('.replay')
             if not (bindsPath.exists() and replayPath.exists):
                 raise FileNotFoundError
             with codecs.open(str(bindsPath), 'r', 'utf-8') as fileInput:
@@ -1095,7 +1041,7 @@ def processForm(form):
             xml = '<root></root>'
     elif mode is Mode.generate:
         config = Config.new_random()
-        config.makeDir()
+        config.mkdir()
         runId = config.name
         (displayGroups, styling, description) = parseForm(form)
         xml = form.getvalue('bindings')
@@ -1104,7 +1050,7 @@ def processForm(form):
             xml = '<root></root>'
         else:
             xml = xml.decode(encoding='utf-8')
-            bindsPath = config.pathWithSuffix('.binds')
+            bindsPath = config.path.with_suffix('.binds')
             with codecs.open(str(bindsPath), 'w', 'utf-8') as xmlOutput:
                 xmlOutput.write(xml)
 
