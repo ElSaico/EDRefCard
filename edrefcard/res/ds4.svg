@@ -5,7 +5,7 @@
         <use xlink:href="#_Image1" x="1855" y="1234" width="983px" height="635px" opacity="0.8"/>
     </g>
     <g transform="matrix(1,0,0,1,-284,-58)">
-        <text x="306.856px" y="214.431px" style="font-family:'LucidaGrande-Bold', 'Lucida Grande', sans-serif;font-weight:600;font-size:144px;">Elite: Dangerous DualShock 4 Controller Bindings</text>
+        <text x="306.856px" y="214.431px" style="font-family:'Exo', sans-serif;font-weight:600;font-size:144px;">Elite: Dangerous DualShock 4 Controller Bindings</text>
     </g>
     <g transform="matrix(1.66853,-5.81383e-17,-5.08195e-17,1.87624,-3437.71,358.641)">
         <rect x="2102.27" y="245.9" width="839.061" height="61.826" style="fill:none;stroke:black;stroke-width:4.51px;"/>

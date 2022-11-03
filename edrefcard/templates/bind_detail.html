@@ -1,4 +1,16 @@
 {% extends "base.html" %}
 
 {% block body %}
+{% include "warnings.html" %}
+{% for image in images %}
+<img width="100%" src="{{ image | config_path(name) }}"/><br/>
+{% endfor %}
+{% if not public %}
+<p/>
+Link directly to this page with the URL <a href="{refcardURL}">{refcardURL}</a>
+<p/>
+You can download the custom binds file for the configuration shown above at <a href="{bindsURL}">{bindsURL}</a>.
+Replace your existing custom binds file with this file to use these controls.
+{% endif %}
+<p/>
 {% endblock %}

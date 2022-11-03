@@ -1,10 +1,13 @@
-from flask import Flask, render_template, request
+import re
+
+from flask import Flask, render_template, request, send_from_directory
 
 import data
 from bindings import ConfigFactory
 
 app = Flask(__name__)
 config = ConfigFactory(app)
+config.initialize_blank_device_images()
 
 
 @app.route('/')
@@ -35,9 +38,9 @@ def bind_detail(bind):
     return render_template('bind_detail.html')
 
 
-@app.route('/configs/<config>')
-def configs(config):
-    return 'Hello, World!'
+@app.route('/configs/<path:path>')
+def configs(path):
+    return send_from_directory('configs', path)
 
 
 @app.route('/devices')
@@ -47,7 +50,10 @@ def device_list():
 
 @app.route('/device/<device>')
 def device_detail(device):
-    return 'Hello, World!'
+    if device not in data.SUPPORTED_DEVICES:
+        #errors = f'<h1>{device} is not a supported controller.</h1>'
+        ...
+    return render_template('device_detail.html', name=data.SUPPORTED_DEVICES[device]["Template"], warnings={})
 
 
 @app.context_processor
@@ -65,3 +71,19 @@ def bind_controllers_filter(devices):
         for controller in [key.split('::')[0] for key in devices]
         if controller not in ['Mouse', 'Keyboard']
     }
+
+
+@app.template_filter('config_path')
+def config_path_filter(image, name):
+    if '::' in image:
+        m = re.search(r'(.*)::([01])', image)
+        device = m.group(1)
+        idx = int(m.group(2))
+    else:
+        device = image
+        idx = 0
+
+    path = f'../configs/{name[:2]}/{name}-{data.SUPPORTED_DEVICES[device]["Template"]}'
+    if idx != 0:
+        path += f'-{idx}'
+    return f'{path}.jpg'

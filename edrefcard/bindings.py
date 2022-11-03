@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from flask import Flask
 from lxml import etree
 
 from collections import OrderedDict
@@ -15,18 +16,58 @@ import datetime
 import codecs
 import os
 import pickle
-import re
 from pathlib import Path
 from urllib.parse import urljoin
 
-from data import SUPPORTED_DEVICES, HOTAS_DETAILS, KEYMAP
+from data import SUPPORTED_DEVICES, HOTAS_DETAILS
+from utils import layout_text
 
 
 class ConfigFactory:
-    def __init__(self, app):
+    GROUP_STYLES = {
+        'General': ('Black', 'Regular', 'Normal'),
+        'Misc': ('Black', 'Regular', 'Normal'),
+        'Modifier': ('Black', 'Bold', 'Normal'),
+        'Galaxy map': ('ForestGreen', 'Regular', 'Normal'),
+        'Holo-Me': ('Sienna', 'Regular', 'Normal'),
+        'Multicrew': ('SteelBlue', 'Bold', 'Normal'),
+        'Fighter': ('DarkSlateBlue', 'Regular', 'Normal'),
+        'Camera': ('OliveDrab', 'Regular', 'Normal'),
+        'Head look': ('IndianRed', 'Regular', 'Normal'),
+        'Ship': ('Crimson', 'Regular', 'Normal'),
+        'SRV': ('MediumPurple', 'Regular', 'Normal'),
+        'Scanners': ('DarkOrchid', 'Regular', 'Normal'),
+        'UI': ('DarkOrange', 'Regular', 'Normal'),
+        'OnFoot': ('CornflowerBlue', 'Regular', 'Normal'),
+    }
+    CATEGORY_STYLES = {
+        'General': ('DarkSlateBlue', 'Regular', 'Normal'),
+        'Combat': ('Crimson', 'Regular', 'Normal'),
+        'Social': ('ForestGreen', 'Regular', 'Normal'),
+        'Navigation': ('Black', 'Regular', 'Normal'),
+        'UI': ('DarkOrange', 'Regular', 'Normal'),
+    }
+    MODIFIER_STYLES = [
+        ('Black', 'Regular', 'Normal'),
+        ('Crimson', 'Regular', 'Normal'),
+        ('ForestGreen', 'Regular', 'Normal'),
+        ('DarkSlateBlue', 'Regular', 'Normal'),
+        ('DarkOrange', 'Regular', 'Normal'),
+        ('DarkOrchid', 'Regular', 'Normal'),
+        ('SteelBlue', 'Regular', 'Normal'),
+        ('Sienna', 'Regular', 'Normal'),
+        ('IndianRed', 'Regular', 'Normal'),
+        ('CornflowerBlue', 'Regular', 'Normal'),
+        ('OliveDrab', 'Regular', 'Normal'),
+        ('MediumPurple', 'Regular', 'Normal'),
+        ('DarkSalmon', 'Regular', 'Normal'),
+        ('LightSlateGray', 'Regular', 'Normal'),
+    ]
+
+    def __init__(self, app: Flask):
         self.app = app
 
-    def create(self, name):
+    def create(self, name: str):
         if not name:
             raise ValueError('Config must have a name')
         return Config(self, name)
@@ -44,8 +85,31 @@ class ConfigFactory:
     def root_path(self):
         return Path(self.app.root_path) / 'configs'
 
+    @property
+    def template_path(self):
+        return Path(self.app.root_path) / 'res'
+
+    def font_path(self, weight: str, style: str):
+        if style == 'Normal':
+            style = ''
+        if weight == 'Regular' and style != '':
+            weight = ''
+        return str(Path(self.app.root_path) / 'static' / f'fonts/Exo2.0-{weight}{style}.otf')
+
+    def group_style(self, name: str):
+        color, font_weight, font_style = self.GROUP_STYLES[name]
+        return {'Color': Color(color), 'Font': self.font_path(font_weight, font_style)}
+
+    def category_style(self, name: str):
+        color, font_weight, font_style = self.CATEGORY_STYLES[name]
+        return {'Color': Color(color), 'Font': self.font_path(font_weight, font_style)}
+
+    def modifier_style(self, i: int):
+        color, font_weight, font_style = self.MODIFIER_STYLES[i % len(self.MODIFIER_STYLES)]
+        return {'Color': Color(color), 'Font': self.font_path(font_weight, font_style)}
+
     def all(self, sort_key=None):
-        def unpickle(path):
+        def unpickle(path) -> Config:
             with path.open('rb') as file:
                 config = pickle.load(file)
                 config['runID'] = path.stem
@@ -55,13 +119,50 @@ class ConfigFactory:
         objs.sort(key=sort_key)
         return objs
 
+    def initialize_blank_device_images(self):
+        for key, device in SUPPORTED_DEVICES.items():
+            if key == 'Keyboard':
+                continue
+            config = self.create(device['Template'])
+            output_path = config.path.with_suffix('.jpg')
+            if output_path.exists():
+                continue
+
+            with Image(filename=self.template_path / f'{device["Template"]}.svg') as output:
+                with Drawing() as context:
+                    context.font = self.font_path('Regular', 'Normal')
+                    context.text_antialias = True
+                    context.font_style = 'normal'
+
+                    for key_device in device.get('KeyDevices', device.get('HandledDevices')):
+                        for keycode, box in HOTAS_DETAILS[key_device].items():
+                            if keycode == 'displayName':
+                                continue
+                            context.stroke_width = 1
+                            context.stroke_color = Color('Red')
+                            context.fill_color = Color('LightGreen')
+                            context.rectangle(top=box['y'], left=box['x'], width=box['width'],
+                                              height=box.get('height', 54))
+                            context.stroke_width = 0
+                            context.fill_color = Color('Black')
+                            source_texts = [{'Text': keycode, 'Group': 'General', 'Style': self.group_style('General')}]
+                            texts = layout_text(output, context, source_texts, box, 40)
+                            for text in texts:
+                                context.font_size = text['Size']
+                                # TODO dry this up
+                                context.font = text['Style']['Font']
+                                context.text(x=text['X'], y=text['Y'], body=text['Text'])
+                    config.mkdir()
+                    context.draw(output)
+                    output.save(filename=str(output_path))
+
 
 class Config:
     @staticmethod
     def web_root():
         return urljoin(os.environ.get('SCRIPT_URI', 'https://edrefcard.info/'), '/')
 
-    def __init__(self, factory, name):
+    def __init__(self, factory: ConfigFactory, name: str):
         self.factory = factory
         self.name = name
 
@@ -80,101 +181,6 @@ class Config:
 
     def bindsURL(self):
         return urljoin(Config.web_root(), f"configs/{self.name}.binds")
-
-
-class Errors:
-    def __init__(
-            self,
-            unhandledDevicesWarnings='',
-            deviceWarnings='',
-            misconfigurationWarnings='',
-            errors=''
-    ):
-        self.unhandledDevicesWarnings = unhandledDevicesWarnings
-        self.deviceWarnings = deviceWarnings
-        self.misconfigurationWarnings = misconfigurationWarnings
-        self.errors = errors
-
-    def __repr__(self):
-        return (
-            f"Errors(unhandledDevicesWarnings='{self.unhandledDevicesWarnings}', "
-            f"deviceWarnings='{self.deviceWarnings}', "
-            f"misconfigurationWarnings='{self.misconfigurationWarnings}', "
-            f"errors='{self.errors}')"
-        )
-
-
-# Utility section
-
-# Helper to obtain a font path
-def getFontPath(weight, style):
-    if style == 'Normal':
-        style = ''
-    if weight == 'Regular' and style != '':
-        weight = ''
-    return f'../fonts/Exo2.0-{weight}{style}.otf'
-
-
-# Command group styling
-groupStyles = {
-    'General': {'Color': Color('Black'), 'Font': getFontPath('Regular', 'Normal')},
-    'Misc': {'Color': Color('Black'), 'Font': getFontPath('Regular', 'Normal')},
-    'Modifier': {'Color': Color('Black'), 'Font': getFontPath('Bold', 'Normal')},
-    'Galaxy map': {'Color': Color('ForestGreen'), 'Font': getFontPath('Regular', 'Normal')},
-    'Holo-Me': {'Color': Color('Sienna'), 'Font': getFontPath('Regular', 'Normal')},
-    'Multicrew': {'Color': Color('SteelBlue'), 'Font': getFontPath('Bold', 'Normal')},
-    'Fighter': {'Color': Color('DarkSlateBlue'), 'Font': getFontPath('Regular', 'Normal')},
-    'Camera': {'Color': Color('OliveDrab'), 'Font': getFontPath('Regular', 'Normal')},
-    'Head look': {'Color': Color('IndianRed'), 'Font': getFontPath('Regular', 'Normal')},
-    'Ship': {'Color': Color('Crimson'), 'Font': getFontPath('Regular', 'Normal')},
-    'SRV': {'Color': Color('MediumPurple'), 'Font': getFontPath('Regular', 'Normal')},
-    'Scanners': {'Color': Color('DarkOrchid'), 'Font': getFontPath('Regular', 'Normal')},
-    'UI': {'Color': Color('DarkOrange'), 'Font': getFontPath('Regular', 'Normal')},
-    'OnFoot': {'Color': Color('CornflowerBlue'), 'Font': getFontPath('Regular', 'Normal')},
-}
-
-# Command category styling
-categoryStyles = {
-    'General': {'Color': Color('DarkSlateBlue'), 'Font': getFontPath('Regular', 'Normal')},
-    'Combat': {'Color': Color('Crimson'), 'Font': getFontPath('Regular', 'Normal')},
-    'Social': {'Color': Color('ForestGreen'), 'Font': getFontPath('Regular', 'Normal')},
-    'Navigation': {'Color': Color('Black'), 'Font': getFontPath('Regular', 'Normal')},
-    'UI': {'Color': Color('DarkOrange'), 'Font': getFontPath('Regular', 'Normal')},
-}
-
-
-# Modifier styling - note a list not a dictionary as modifiers are numeric
-class ModifierStyles:
-    styles = [
-        {'Color': Color('Black'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('Crimson'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('ForestGreen'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('DarkSlateBlue'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('DarkOrange'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('DarkOrchid'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('SteelBlue'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('Sienna'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('IndianRed'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('CornflowerBlue'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('OliveDrab'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('MediumPurple'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('DarkSalmon'), 'Font': getFontPath('Regular', 'Normal')},
-        {'Color': Color('LightSlateGray'), 'Font': getFontPath('Regular', 'Normal')},
-    ]
-
-    def index(num):
-        i = num % len(ModifierStyles.styles)
-        return ModifierStyles.styles[i]
-
-
-def transKey(key):
-    if key is None:
-        return None
-    trans = KEYMAP.get(key)
-    if trans is None:
-        trans = key.replace('Key_', '')
-    return trans
-
 
 # Output section
 
@@ -339,45 +345,6 @@ def writeText(context, img, text, screenState, font, surround, newLine):
         screenState['thisWidth'] = 0
     else:
         screenState['currentX'] = screenState['currentX'] + width
-
-
-def createBlockImage(supportedDeviceKey, strokeColor='Red', fillColor='LightGreen', dryRun=False):
-    supportedDevice = SUPPORTED_DEVICES[supportedDeviceKey]
-    # Set up the path for our file
-    templateName = supportedDevice['Template']
-    config = Config(templateName)
-    config.mkdir()
-    filePath = config.path.with_suffix('.svg')
-
-    with Image(filename='../res/' + supportedDevice['Template'] + '.svg') as sourceImg:
-        with Drawing() as context:
-            if not dryRun:
-                context.font = getFontPath('Regular', 'Normal')
-                context.text_antialias = True
-                context.font_style = 'normal'
-            maxFontSize = 40
-
-            for keyDevice in supportedDevice.get('KeyDevices', supportedDevice.get('HandledDevices')):
-                for (keycode, box) in HOTAS_DETAILS[keyDevice].items():
-                    if keycode == 'displayName':
-                        continue
-                    if not dryRun:
-                        context.stroke_width = 1
-                        context.stroke_color = Color(strokeColor)
-                        context.fill_color = Color(fillColor)
-                        context.rectangle(top=box['y'], left=box['x'], width=box['width'], height=box.get('height', 54))
-                        context.stroke_width = 0
-                        context.fill_color = Color('Black')
-                        sourceTexts = [{'Text': keycode, 'Group': 'General', 'Style': groupStyles['General']}]
-                        texts = layoutText(sourceImg, context, sourceTexts, box, maxFontSize)
-                        for text in texts:
-                            context.font_size = text['Size']
-                            # TODO dry this up
-                            context.font = text['Style']['Font']
-                            context.text(x=text['X'], y=text['Y'], body=text['Text'])
-            if not dryRun:
-                context.draw(sourceImg)
-                sourceImg.save(filename=str(filePath))
 
 
 # Return whether a binding is a redundant specialisation and thus can be hidden
@@ -580,212 +547,6 @@ def createHOTASImage(physicalKeys, modifiers, source, imageDevices, biggestFontS
             context.draw(sourceImg)
             sourceImg.save(filename=str(filePath))
     return True
-
-
-def layoutText(img, context, texts, hotasDetail, biggestFontSize):
-    width = hotasDetail.get('width')
-    height = hotasDetail.get('height', 54)
-
-    # Work out the best font size
-    fontSize = calculateBestFitFontSize(context, width, height, texts, biggestFontSize)
-
-    # Work out location of individual texts
-    currentX = hotasDetail.get('x')
-    currentY = hotasDetail.get('y')
-    maxX = hotasDetail.get('x') + hotasDetail.get('width')
-    metrics = None
-
-    for text in texts:
-        text['Size'] = fontSize
-        context.font = text['Style']['Font']
-        context.font_size = fontSize
-        metrics = context.get_font_metrics(img, text['Text'], multiline=False)
-        if currentX + int(metrics.text_width) > maxX:
-            # Newline
-            currentX = hotasDetail.get('x')
-            currentY = currentY + fontSize
-        text['X'] = currentX
-        text['Y'] = currentY + int(metrics.ascender)
-        currentX = currentX + int(metrics.text_width + metrics.character_width)
-
-    # We want to centre the texts vertically, which we can now do as we know how much space the texts take up
-    textHeight = currentY + fontSize - hotasDetail.get('y')
-    yOffset = int((height - textHeight) / 2) - int(fontSize / 6)
-    for text in texts:
-        text['Y'] = text['Y'] + yOffset
-
-    return texts
-
-
-# Calculate the best fit font size for our text given the dimensions of the box
-def calculateBestFitFontSize(context, width, height, texts, biggestFontSize):
-    fontSize = biggestFontSize
-    context.push()
-    with Image(width=width, height=height) as img:
-        # Step through the font size until we find one that fits
-        fits = False
-        while fits == False:
-            currentX = 0
-            currentY = 0
-            tooLong = False
-            for text in texts:
-                context.font = text['Style']['Font']
-                context.font_size = fontSize
-                metrics = context.get_font_metrics(img, text['Text'], multiline=False)
-                if currentX + int(metrics.text_width) > width:
-                    if currentX == 0:
-                        # This single entry is too long for the box; shrink it
-                        tooLong = True
-                        break
-                    else:
-                        # Newline
-                        currentX = 0
-                        currentY = currentY + fontSize
-                text['X'] = currentX
-                text['Y'] = currentY + int(metrics.ascender)
-                currentX = currentX + int(metrics.text_width + metrics.character_width)
-            if tooLong is False and currentY + metrics.text_height < height:
-                fits = True
-            else:
-                fontSize = fontSize - 1
-    context.pop()
-    return fontSize
-
-
-def calculateBestFontSize(context, text, hotasDetail, biggestFontSize):
-    width = hotasDetail.get('width')
-    height = hotasDetail.get('height', 54)
-    with Image(width=width, height=height) as img:
-
-        # Step through the font size until we find one that fits
-        fontSize = biggestFontSize
-        fits = False
-        while fits == False:
-            fitText = text
-            context.font_size = fontSize
-            # See if it fits on a single line
-            metrics = context.get_font_metrics(img, fitText, multiline=False)
-            if metrics.text_width <= hotasDetail.get('width'):
-                fits = True
-            else:
-                # See if we can break out the text on to multiple lines
-                lines = max(int(height / metrics.text_height), 1)
-                if lines == 1:
-                    # Not enough room for more lines
-                    fontSize = fontSize - 1
-                else:
-                    fitText = ''
-                    minLineLength = int(len(text) / lines)
-                    regex = r'.{%s}[^,]*, |.+' % minLineLength
-                    matches = re.findall(regex, text)
-                    for match in matches:
-                        if fitText == '':
-                            fitText = match
-                        else:
-                            fitText = f'{fitText}\n{match}'
-
-                    metrics = context.get_font_metrics(img, fitText, multiline=True)
-                    if metrics.text_width <= hotasDetail.get('width'):
-                        fits = True
-                    else:
-                        fontSize = fontSize - 1
-
-    return fitText, fontSize, metrics
-
-
-# Returns a set of controller names used by the binding
-def controllerNames(configObj):
-    rawKeys = configObj['devices'].keys()
-    controllers = [fullKey.split('::')[0] for fullKey in rawKeys]
-    silencedControllers = ['Mouse', 'Keyboard']
-
-    def displayName(controller):
-        try:
-            return HOTAS_DETAILS[controller]['displayName']
-        except:
-            return controller
-
-    controllers = {displayName(controller) for controller in controllers if not controller in silencedControllers}
-    return controllers
-
-
-def printListItem(configObj, searchOpts):
-    config = Config(configObj['runID'])
-    refcardURL = str(config.refcardURL())
-    dateStr = str(configObj['timestamp'].ctime())
-    name = str(configObj['description'])
-
-    controllers = controllerNames(configObj)
-    # Apply search filter if provided
-    searchControllers = searchOpts.get('controllers', set())
-    if searchControllers:
-        # Resolve device name from select list (from 'SUPPORTED_DEVICES') into their 'handledDevices' (which are
-        # referenced in the bindings files)
-        requestedDevices = [SUPPORTED_DEVICES.get(controller, {}).get('HandledDevices', {}) for controller in
-                            searchControllers]
-        requestedDevices = set([item for sublist in requestedDevices for item in sublist])  # Flatten into a set
-
-        # Compare against the list of devices supported in this binding config
-        devices = [fullKey.split('::')[0] for fullKey in configObj['devices'].keys()]
-        # print(f'<!-- Checking if any requested devices {requestedDevices} are in config\'s devices {devices} -->')
-        if not any(requestedDevice in devices for requestedDevice in requestedDevices):
-            return
-
-    controllersStr = ', '.join(sorted(controllers))
-    if name == '':
-        # if the uploader didn't bother to name their config, skip it
-        return
-    print(f'''
-    <tr>
-        <td class="description">
-            <a href={refcardURL}>{html.escape(name, quote=True)}</a>
-        </td>
-        <td class="controllers">
-            {controllersStr}
-        </td>
-        <td class="date">
-            {dateStr}
-        </td>
-    </tr>
-    ''')
-
-
-def printRefCard(config, public, createdImages, deviceForBlockImage, errors):
-    runId = config.name
-    if errors.unhandledDevicesWarnings != '':
-        print(f'{errors.unhandledDevicesWarnings}<br/>')
-    if errors.misconfigurationWarnings != '':
-        print(f'{errors.misconfigurationWarnings}<br/>')
-    if errors.deviceWarnings != '':
-        print(f'{errors.deviceWarnings}<br/>')
-    if errors.errors != '':
-        print(f'{errors.errors}<br/>')
-    else:
-        for createdImage in createdImages:
-            if '::' in createdImage:
-                # Split the created image in to device and device index
-                m = re.search(r'(.*)::([01])', createdImage)
-                device = m.group(1)
-                deviceIndex = int(m.group(2))
-            else:
-                device = createdImage
-                deviceIndex = 0
-            if deviceIndex == 0:
-                print(
-                    f'<img width="100%" src="../configs/{runId[:2]}/{runId}-{SUPPORTED_DEVICES[device]["Template"]}.svg"/><br/>')
-            else:
-                print(
-                    f'<img width="100%" src="../configs/{runId[:2]}/{runId}-{SUPPORTED_DEVICES[device]["Template"]}-{deviceIndex}.svg"/><br/>')
-        if deviceForBlockImage is not None:
-            print(
-                f'<img width="100%" src="../configs/{SUPPORTED_DEVICES[deviceForBlockImage]["Template"][:2]}/{SUPPORTED_DEVICES[deviceForBlockImage]["Template"]}.svg"/><br/>')
-        if deviceForBlockImage is None and public is True:
-            linkURL = config.refcardURL()
-            bindsURL = config.bindsURL()
-            print(f'<p/>Link directly to this page with the URL <a href="{linkURL}">{linkURL}</a>')
-            print(
-                f'<p/>You can download the custom binds file for the configuration shown above at <a href="{bindsURL}">{bindsURL}</a>.  Replace your existing custom binds file with this file to use these controls.')
-    print('<p/>')
 
 
 # Parser section

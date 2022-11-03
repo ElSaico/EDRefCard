@@ -17,7 +17,7 @@
         <rect x="2102.27" y="245.9" width="839.061" height="61.826" style="fill:none;stroke:black;stroke-width:5.99px;"/>
     </g>
     <g transform="matrix(1,0,0,1,-284,-58)">
-        <text x="306.856px" y="214.431px" style="font-family:'LucidaGrande-Bold', 'Lucida Grande', sans-serif;font-weight:600;font-size:144px;">Elite: Dangerous Cougar MFD Bindings</text>
+        <text x="306.856px" y="214.431px" style="font-family:'Exo', sans-serif;font-weight:600;font-size:144px;">Elite: Dangerous Cougar MFD Bindings</text>
     </g>
     <g id="Background" transform="matrix(1,0,0,1,-1568,-543)">
         <use xlink:href="#_Image1" x="2047" y="1279" width="925px" height="942px"/>
