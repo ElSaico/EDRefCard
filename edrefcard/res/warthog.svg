@@ -241,12 +241,12 @@
             <path d="M3122.94,916.622L3122.97,916.622C3135.86,916.622 3139.82,921.446 3139.82,936.638C3139.82,950.822 3135.86,955.574 3122.97,955.574L3122.94,955.574L3122.94,950.246L3122.97,950.246C3130.74,950.246 3134.49,949.238 3134.49,936.638C3134.49,922.958 3131.39,921.95 3122.97,921.95L3122.94,921.95L3122.94,916.622Z"/>
         </g>
         <g transform="matrix(1,0,0,1,1690.87,-958.512)">
-            <text x="291.643px" y="1630.53px" style="font-family:'Exo-Regular', 'Exo';font-size:72px;">o</text>
+            <text x="291.643px" y="1630.53px" style="font-family:'Exo';font-size:72px;">o</text>
         </g>
     </g>
     <g transform="matrix(1,0,0,1,-239.581,78.5566)">
         <g transform="matrix(1,0,0,1,2756.8,-241.141)">
-            <text x="291.643px" y="1630.53px" style="font-family:'Exo-Regular', 'Exo';font-size:72px;">o</text>
+            <text x="291.643px" y="1630.53px" style="font-family:'Exo';font-size:72px;">o</text>
         </g>
         <g transform="matrix(0.905775,-4.23839e-16,-2.76729e-16,2.81436,1136.14,536.578)">
             <rect x="2102.27" y="245.9" width="839.061" height="61.826" style="fill:none;stroke:black;stroke-width:4.31px;"/>
@@ -273,7 +273,7 @@
     </g>
     <g transform="matrix(1,0,0,1,99.9554,-12.5839)">
         <g transform="matrix(1,0,0,1,1554.89,-655.918)">
-            <text x="291.643px" y="1630.53px" style="font-family:'Exo-Regular', 'Exo';font-size:72px;">o</text>
+            <text x="291.643px" y="1630.53px" style="font-family:'Exo';font-size:72px;">o</text>
         </g>
         <g transform="matrix(1,-2.74952e-17,-2.23522e-17,1.34235,-517.831,-897.861)">
             <path d="M2414.68,1402.89L2414.52,1195.79" style="fill:none;stroke:black;stroke-width:7.6px;"/>
@@ -296,7 +296,7 @@
     </g>
     <g transform="matrix(1,0,0,1,0,-30.0191)">
         <g transform="matrix(1,0,0,1,1322.8,120.542)">
-            <text x="291.643px" y="1630.53px" style="font-family:'Exo-Regular', 'Exo';font-size:72px;">o</text>
+            <text x="291.643px" y="1630.53px" style="font-family:'Exo';font-size:72px;">o</text>
         </g>
         <g transform="matrix(1,-2.74952e-17,-2.23522e-17,1.34235,-749.918,-121.401)">
             <path d="M2414.68,1402.89L2414.52,1195.79" style="fill:none;stroke:black;stroke-width:7.6px;"/>
